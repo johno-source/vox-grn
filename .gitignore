@@ -127,6 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-Projects/vox-grn/TalTechNLP/*.wav
-Projects/vox-grn/TalTechNLP/*.mp3
-Projects/vox-grn/TalTechNLP/*.ckpt
+*.wav
+*.mp3
+*.ckpt
+
