@@ -4,6 +4,7 @@
 """
 import numpy as np
 from pydub import AudioSegment
+import webrtcvad
 
 
 # Define constants
@@ -23,20 +24,6 @@ def convert_frames_to_ms(frames):
 
 MERGE_TOLERANCE = convert_seconds_to_frames(1.0)
 
-# Input data conditioning. 
-def convert_float_to_pcm(sig):
-    """Input is a float array range -1.0 to 1.0. Output is byte array, big endian"""
-    sig = np.asarray(sig)
-    if sig.dtype.kind != 'f':
-        raise TypeError("'sig' must be a float array")
-
-    i = np.iinfo('int16')
-    abs_max = 2 ** (i.bits - 1)
-    offset = i.min + abs_max
-    out_int16 = (sig * abs_max + offset).clip(i.min, i.max).astype('<i2')
-    return out_int16.tobytes()
-
-
 # Now the problem is that vad works on small frames. This gives the granularity for determining where voice starts and ends.
 # These classes let us break the audio into suitable frames
 class Frame(object):
@@ -46,28 +33,25 @@ class Frame(object):
         self.timestamp = timestamp
         self.duration = duration
 
-def frame_generator(frame_duration_ms, audio, sample_rate):
-    """Generates audio frames from floating point wav audio data.
-    Takes the desired frame duration in milliseconds, the wav data, and
-    the sample rate.
-    Yields Frames of the requested duration.
-    """
-    # The 2 in this is because the PCM data is assumed to be 16 bit and the data in bytes.
-    audio = convert_float_to_pcm(audio)
-    n = int(sample_rate * (frame_duration_ms / 1000.0) * 2)
-    offset = 0
-    timestamp = 0.0
-    duration = (float(n) / sample_rate) / 2.0
-    while offset + n < len(audio):
-        yield Frame(audio[offset:offset + n], timestamp, duration)
-        timestamp += duration
-        offset += n
-
 def generate_frames_from_audio_segments(frame_duration_ms, audio, sample_rate):
     """Generates audio frames from pydub AudioSegments.
-    Takes the desired frame duration in milliseconds, the AudioSegment, and
-    the sample rate.
-    Yields Frames of the requested duration.
+
+
+        Parameters
+        ----------
+            frame_duration_ms : int
+                The desired frame duration in milliseconds.
+
+            audio : AudioSegment
+                A pydub AudioSegment. This does not need to be preconditioned for this function.
+
+            sample_rate : int
+                The desired sample rate of the created frame data.
+            
+        Yields
+        ------
+            frame : Frame
+                generated frame. As this is a generator the return value needs to be iterated over.
     """
     assert isinstance(audio, AudioSegment)
     
@@ -81,15 +65,16 @@ def generate_frames_from_audio_segments(frame_duration_ms, audio, sample_rate):
     if audio.frame_rate != sample_rate:
         audio = audio.set_frame_rate(sample_rate)
         
-    n = int(sample_rate * (frame_duration_ms / 1000.0) * 2)
+    bytes_in_a_frame = int(sample_rate * (frame_duration_ms / 1000.0) * 2)
     offset = 0
     timestamp = 0.0
-    duration = (float(n) / sample_rate) / 2.0
-    a = audio.raw_data
-    while offset + n < len(a):
-        yield Frame(a[offset:offset + n], timestamp, duration)
+    duration = frame_duration_ms / 1000.0
+    raw_audio_data = audio.raw_data
+    bytes_in_the_segment = len(raw_audio_data)
+    while offset + bytes_in_a_frame < bytes_in_the_segment:
+        yield Frame(raw_audio_data[offset:offset + bytes_in_a_frame], timestamp, duration)
         timestamp += duration
-        offset += n
+        offset += bytes_in_a_frame
 
 
 # webrtcvad output conditioning
@@ -203,3 +188,34 @@ def divide_into_segments(segs, seconds, merge_tolerance=MERGE_TOLERANCE):
                 a list of the segments each seconds long. An empty list means no suitable segments were found.
     """
     return __take_segment_from_list(segs, segs[0].start, convert_seconds_to_frames(seconds), convert_seconds_to_frames(merge_tolerance)) if len(segs) > 0 else []
+
+
+def audio_to_raw_voice_segments(audio_segment):
+    """
+    Find the raw voice segments for the associated audio segment.
+
+        Parameters
+        ----------
+            audio_segment : AudioSegment
+                The audio segment to process. There is no need to precondition this segment.
+            
+        Returns
+        -------
+            segments : list[VoiceSegment]
+                a list of the segments where voice was found. An empty list means no voice was found.
+    """
+    # we want to have static variables to avoid initialising the VAD many times BUT we cannot initialise it
+    # globally - it must by lazy initialisation. 
+    try:
+        audio_to_raw_voice_segments.init += 1
+    except AttributeError:
+        audio_to_raw_voice_segments.vad = webrtcvad.Vad(2)
+        audio_to_raw_voice_segments.vadfilt = VADFilter()
+    audio_to_raw_voice_segments.init = 1
+
+    frames = generate_frames_from_audio_segments(FRAME_SIZE_MS, audio_segment, SAMPLING_RATE)
+    speech = [audio_to_raw_voice_segments.vad.is_speech(frame.bytes, SAMPLING_RATE) for frame in frames]
+    vadout = [audio_to_raw_voice_segments.vadfilt.filt(s) for s in speech]
+    return form_segments(vadout)
+
+
