@@ -4,18 +4,7 @@
 import unittest
 from vad_utils import *
 from pydub import AudioSegment
-
-class TestConvertFloatToPCM(unittest.TestCase):
-
-    def testConvertToPCM(self):
-        wav = [1.0, 0.5, 0.0, -0.5, -1.0]
-        self.assertEqual(convert_float_to_pcm([]), b'')
-        self.assertEqual(convert_float_to_pcm(wav), b'\xff\x7f\x00\x40\x00\x00\x00\xc0\x00\x80')
-
-    def testConvertToPCMOutOfRange(self):
-        wav = [10.0, 0.5, 0.0, -0.5, -100.0]
-        self.assertEqual(convert_float_to_pcm([]), b'')
-        self.assertEqual(convert_float_to_pcm(wav), b'\xff\x7f\x00\x40\x00\x00\x00\xc0\x00\x80')
+import pickle as pkl
 
 class TestVADFilter(unittest.TestCase):
     def testnovoice(self):
@@ -63,11 +52,27 @@ class TestBreakIntoSegments(unittest.TestCase):
                 VoiceSegment(convert_seconds_to_frames(6.5), convert_seconds_to_frames(13.0))
             ], 6.0))
 
-class TestAudioSegmentToVAD(unittest.TestCase):
-    def testAudioSegmentToBytes(self):
-        test_audio_segment = sound = AudioSegment(
-            data=b'\xff\x7f\x00\x00\x40\x00\x00\x00\x00\x00\x00\x00\xc0\x00\x80\x00\x00',
-            sample_width=4,
-            frame_rate=44100,
-            channels=1
-        )
+class TestPickledSegments(unittest.TestCase):
+
+    def testPickleAndUnpickle(self):
+        dut = [VoiceSegment(0, convert_seconds_to_frames(6.0)), VoiceSegment(convert_seconds_to_frames(6.5), convert_seconds_to_frames(12.5))]
+        with open('test.pkl', 'wb') as pklFile:
+            pkl.dump(dut, pklFile)
+        with open('test.pkl', 'rb') as pklFile:
+            self.assertEqual(dut, pkl.load(pklFile))
+
+class Test_audio_to_raw_voice_segments(unittest.TestCase):
+    """This tests the voice segment generation rather than the VAD, which is called by these functions."""
+
+    def testNoVoice(self):
+        self.assertEqual([], audio_to_raw_voice_segments(AudioSegment.silent(duration=10.0)))
+
+    def testOnRealVoice(self):
+        test_seg = AudioSegment.from_file('/media/programs/Programs/03/03410/A03410/From_CM/C03410B-01.wav', format='wav')
+        segs = audio_to_raw_voice_segments(test_seg)
+        self.assertGreaterEqual(len(segs), 20)
+        prior_stop = 0.0
+        for seg in segs:
+            self.assertGreater(seg.start, prior_stop)
+            self.assertGreater(seg.stop, seg.start)
+            prior_stop = seg.stop
