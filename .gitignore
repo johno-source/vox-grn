@@ -131,3 +131,7 @@ dmypy.json
 *.mp3
 *.ckpt
 
+# project stuff
+Projects/SegmentVOX/*.csv
+Projects/SegmentVOX/*.pkl
+Projects/vad_utils/test.pkl
