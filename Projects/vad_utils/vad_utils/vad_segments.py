@@ -190,7 +190,7 @@ def divide_into_segments(segs, seconds, merge_tolerance=MERGE_TOLERANCE):
     return __take_segment_from_list(segs, segs[0].start, convert_seconds_to_frames(seconds), convert_seconds_to_frames(merge_tolerance)) if len(segs) > 0 else []
 
 
-def audio_to_raw_voice_segments(audio_segment):
+def audio_to_raw_voice_segments(audio_segment, sensitivity=1):
     """
     Find the raw voice segments for the associated audio segment.
 
@@ -198,6 +198,8 @@ def audio_to_raw_voice_segments(audio_segment):
         ----------
             audio_segment : AudioSegment
                 The audio segment to process. There is no need to precondition this segment.
+            sensitivity : int
+                The sensitivity to use on the vad algorithm
             
         Returns
         -------
@@ -209,9 +211,13 @@ def audio_to_raw_voice_segments(audio_segment):
     try:
         audio_to_raw_voice_segments.init += 1
     except AttributeError:
-        audio_to_raw_voice_segments.vad = webrtcvad.Vad(2)
         audio_to_raw_voice_segments.vadfilt = VADFilter()
+        audio_to_raw_voice_segments.sensitivity = -1
+    
     audio_to_raw_voice_segments.init = 1
+    if audio_to_raw_voice_segments.sensitivity != sensitivity:
+        audio_to_raw_voice_segments.vad = webrtcvad.Vad(sensitivity)
+        audio_to_raw_voice_segments.sensitivity = sensitivity
 
     frames = generate_frames_from_audio_segments(FRAME_SIZE_MS, audio_segment, SAMPLING_RATE)
     speech = [audio_to_raw_voice_segments.vad.is_speech(frame.bytes, SAMPLING_RATE) for frame in frames]
