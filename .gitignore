@@ -135,3 +135,9 @@ dmypy.json
 Projects/SegmentVOX/*.csv
 Projects/SegmentVOX/*.pkl
 Projects/vad_utils/test.pkl
+Projects/SegmentVOX/pretrained_models/2stems/._checkpoint
+Projects/SegmentVOX/pretrained_models/2stems/.probe
+Projects/SegmentVOX/pretrained_models/2stems/checkpoint
+Projects/SegmentVOX/pretrained_models/2stems/model.data-00000-of-00001
+Projects/SegmentVOX/pretrained_models/2stems/model.index
+Projects/SegmentVOX/pretrained_models/2stems/model.meta
